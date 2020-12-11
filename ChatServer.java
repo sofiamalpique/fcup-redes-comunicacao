@@ -102,8 +102,7 @@ public class ChatServer
 					set.remove(sc);
 					for (SocketChannel scit : set) {
 					    scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
-					}
-			    
+					}			    
 				    }
 				    if (mapSockName.containsKey(sc)){
 					if (mapAvailNames.containsKey(mapSockName.get(sc))) {
@@ -147,126 +146,136 @@ public class ChatServer
     // Just read the message from the socket and send it to stdout
     static private boolean processInput( SocketChannel sc ) throws IOException {
 	// Read the message to the buffer
+	String majorMessage;
 	buffer.clear();
 	sc.read( buffer );
 	buffer.flip();
+	majorMessage = decoder.decode(buffer).toString();
 
 	// If no data, close the connection
 	if (buffer.limit()==0) {
 	    return false;
 	}
 
-	// Decode and print the message to stdout
-	String message = decoder.decode(buffer).toString();
-	System.out.print( message );
-
-	CharBuffer tmpbuf = CharBuffer.allocate(1048576);
-	boolean mess = false;
-	boolean error = true;
-	String[] decmessage = message.split("[ \t\n\f\r]");
-	int beg = 0;
-
-	if (message.length() > 1 && message.charAt(0) == '/' && message.charAt(1) == '/')
-	    beg = 1;
+	while (majorMessage.charAt(majorMessage.length()-1) != '\n') {
+	    buffer.clear();
+	    sc.read(buffer);
+	    buffer.flip();
+	    majorMessage += decoder.decode(buffer).toString();    
+	}
 	
-	if (message.length() > 1) {
-	    mess = true;
-	    if (message.charAt(0) == '/') {
-		if (message.charAt(1) != '/') {
-		    mess = false;
-		    if (message.indexOf("nick") == 1 && decmessage.length == 2 && !mapAvailNames.containsKey(decmessage[1])) {
-			String newer = decmessage[1];
-			if ( mapSockRoom.containsKey(sc) ) {
-			    String older = mapSockName.get(sc);
-			    for(SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
-				if (sc != scit)
-				    scit.write(encoder.encode(CharBuffer.wrap("NEWNICK " + older + " " + newer + "\n")));
+	System.out.print( majorMessage );
+	
+	String[] messages = majorMessage.split("[\n]");
+	for (String message : messages) {
+	    CharBuffer tmpbuf = CharBuffer.allocate(1048576);
+	    boolean mess = false;
+	    boolean error = true;
+	    String[] decmessage = message.split("[ \t\n\f\r]");
+	    int beg = 0;
+
+	    if (message.length() > 1 && message.charAt(0) == '/' && message.charAt(1) == '/')
+		beg = 1;
+	
+	    if (message.length() > 1) {
+		mess = true;
+		if (message.charAt(0) == '/') {
+		    if (message.charAt(1) != '/') {
+			mess = false;
+			if (message.indexOf("nick") == 1 && decmessage.length == 2 && !mapAvailNames.containsKey(decmessage[1])) {
+			    String newer = decmessage[1];
+			    if ( mapSockRoom.containsKey(sc) ) {
+				String older = mapSockName.get(sc);
+				for(SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
+				    if (sc != scit)
+					scit.write(encoder.encode(CharBuffer.wrap("NEWNICK " + older + " " + newer + "\n")));
+				}
 			    }
-			}
-			if (mapSockName.containsKey(sc)) {
-			    mapAvailNames.remove(mapSockName.get(sc));
-			    mapSockName.remove(sc);
-			}
-			mapSockName.put(sc,newer);
-			mapAvailNames.put(newer,1);
-			sc.write(encoder.encode(CharBuffer.wrap("OK\n")));
-			error = false;
-		    } else if (message.indexOf("join") == 1 && decmessage.length == 2 && mapSockName.containsKey(sc)) {
-			String name = mapSockName.get(sc);
-			String newer = decmessage[1];
-			sc.write(encoder.encode(CharBuffer.wrap("OK\n")));
-			if (mapSockRoom.containsKey(sc)) {
+			    if (mapSockName.containsKey(sc)) {
+				mapAvailNames.remove(mapSockName.get(sc));
+				mapSockName.remove(sc);
+			    }
+			    mapSockName.put(sc,newer);
+			    mapAvailNames.put(newer,1);
+			    sc.write(encoder.encode(CharBuffer.wrap("OK\n")));
+			    error = false;
+			} else if (message.indexOf("join") == 1 && decmessage.length == 2 && mapSockName.containsKey(sc)) {
+			    String name = mapSockName.get(sc);
+			    String newer = decmessage[1];
+			    sc.write(encoder.encode(CharBuffer.wrap("OK\n")));
+			    if (mapSockRoom.containsKey(sc)) {
+				for (SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
+				    if (sc != scit)
+					scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
+				}
+				String older = mapSockRoom.get(sc);
+				mapRoom.get(older).remove(sc);
+				if (mapRoom.get(older).size() == 0){
+				    mapRoom.remove(older);
+				}
+				mapSockRoom.remove(sc);
+			    }
+			    mapSockRoom.put(sc,newer);
+			    if (mapRoom.containsKey(newer)) {
+				mapRoom.get(newer).add(sc);
+			    } else {
+				mapRoom.put(newer, new HashSet<SocketChannel>());
+				mapRoom.get(newer).add(sc);
+			    }
+			    for (SocketChannel scit : mapRoom.get(newer)) {
+				if (sc != scit)
+				    scit.write(encoder.encode(CharBuffer.wrap("JOINED " + name + "\n")));
+			    }
+			    error = false;
+			} else if (message.indexOf("leave") == 1 && decmessage.length == 1 && mapSockRoom.containsKey(sc) && mapSockName.containsKey(sc)){
+			    String name = mapSockName.get(sc);
 			    for (SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
 				if (sc != scit)
 				    scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
 			    }
 			    String older = mapSockRoom.get(sc);
+			    mapSockRoom.remove(sc);
 			    mapRoom.get(older).remove(sc);
 			    if (mapRoom.get(older).size() == 0){
 				mapRoom.remove(older);
 			    }
-			    mapSockRoom.remove(sc);
-			}
-			mapSockRoom.put(sc,newer);
-			if (mapRoom.containsKey(newer)) {
-			    mapRoom.get(newer).add(sc);
-			} else {
-			    mapRoom.put(newer, new HashSet<SocketChannel>());
-			    mapRoom.get(newer).add(sc);
-			}
-			for (SocketChannel scit : mapRoom.get(newer)) {
-			    if (sc != scit)
-				scit.write(encoder.encode(CharBuffer.wrap("JOINED " + name + "\n")));
-			}
-			error = false;
-		    } else if (message.indexOf("leave") == 1 && decmessage.length == 1 && mapSockRoom.containsKey(sc) && mapSockName.containsKey(sc)){
-		        String name = mapSockName.get(sc);
-			for (SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
-			    if (sc != scit)
-				scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
-			}
-			String older = mapSockRoom.get(sc);
-			mapSockRoom.remove(sc);
-			mapRoom.get(older).remove(sc);
-			if (mapRoom.get(older).size() == 0){
-			    mapRoom.remove(older);
-			}
-			sc.write(encoder.encode(CharBuffer.wrap("OK\n")));
-			error = false;
-		    } else if (message.indexOf("bye") == 1 && decmessage.length == 1) {
-			sc.write(encoder.encode(CharBuffer.wrap("BYE\n")));
-			if (mapSockRoom.containsKey(sc)) {
-			    Set<SocketChannel> s = mapRoom.get(mapSockRoom.get(sc));
-			    mapSockRoom.remove(sc);
-			    s.remove(sc);
-			    String name = mapSockName.get(sc);
-			    for (SocketChannel scit : s) {
-				scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
-			    }
+			    sc.write(encoder.encode(CharBuffer.wrap("OK\n")));
+			    error = false;
+			} else if (message.indexOf("bye") == 1 && decmessage.length == 1) {
+			    sc.write(encoder.encode(CharBuffer.wrap("BYE\n")));
+			    if (mapSockRoom.containsKey(sc)) {
+				Set<SocketChannel> s = mapRoom.get(mapSockRoom.get(sc));
+				mapSockRoom.remove(sc);
+				s.remove(sc);
+				String name = mapSockName.get(sc);
+				for (SocketChannel scit : s) {
+				    scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
+				}
 			    
-			}
-			if (mapSockName.containsKey(sc)){
-			    if (mapAvailNames.containsKey(mapSockName.get(sc))) {
-				mapAvailNames.remove(mapSockName.get(sc));
 			    }
-			    mapSockName.remove(sc);
+			    if (mapSockName.containsKey(sc)){
+				if (mapAvailNames.containsKey(mapSockName.get(sc))) {
+				    mapAvailNames.remove(mapSockName.get(sc));
+				}
+				mapSockName.remove(sc);
+			    }
+			    sc.close();
+			    error = false;
 			}
-			sc.close();
-			error = false;
 		    }
 		}
 	    }
-	}
 
-	if (mess && mapSockRoom.containsKey(sc)) {
-	    error = false;
-	    for (SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
-		scit.write(encoder.encode(CharBuffer.wrap("MESSAGE " + mapSockName.get(sc) + " " + message.substring(beg,message.length()) + "\n")));
+	    if (mess && mapSockRoom.containsKey(sc)) {
+		error = false;
+		for (SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
+		    scit.write(encoder.encode(CharBuffer.wrap("MESSAGE " + mapSockName.get(sc) + " " + message.substring(beg,message.length()) + "\n")));
+		}
 	    }
-	}
 
-	if (error) {
-	    sc.write(encoder.encode(CharBuffer.wrap("ERROR\n")));
+	    if (error) {
+		sc.write(encoder.encode(CharBuffer.wrap("ERROR\n")));
+	    }
 	}
 
 	return true;
