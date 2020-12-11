@@ -178,8 +178,9 @@ public class ChatServer
 			String newer = decmessage[1];
 			if ( mapSockRoom.containsKey(sc) ) {
 			    String older = mapSockName.get(sc);
-			    for(SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {			    
-				scit.write(encoder.encode(CharBuffer.wrap("NEWNICK " + older + " " + newer + "\n")));
+			    for(SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
+				if (sc != scit)
+				    scit.write(encoder.encode(CharBuffer.wrap("NEWNICK " + older + " " + newer + "\n")));
 			    }
 			}
 			if (mapSockName.containsKey(sc)) {
@@ -196,7 +197,8 @@ public class ChatServer
 			sc.write(encoder.encode(CharBuffer.wrap("OK\n")));
 			if (mapSockRoom.containsKey(sc)) {
 			    for (SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
-				scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
+				if (sc != scit)
+				    scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
 			    }
 			    String older = mapSockRoom.get(sc);
 			    mapRoom.get(older).remove(sc);
@@ -213,13 +215,15 @@ public class ChatServer
 			    mapRoom.get(newer).add(sc);
 			}
 			for (SocketChannel scit : mapRoom.get(newer)) {
-			    scit.write(encoder.encode(CharBuffer.wrap("JOINED " + name + "\n")));
+			    if (sc != scit)
+				scit.write(encoder.encode(CharBuffer.wrap("JOINED " + name + "\n")));
 			}
 			error = false;
 		    } else if (message.indexOf("leave") == 1 && decmessage.length == 1 && mapSockRoom.containsKey(sc) && mapSockName.containsKey(sc)){
 		        String name = mapSockName.get(sc);
 			for (SocketChannel scit : mapRoom.get(mapSockRoom.get(sc))) {
-			    scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
+			    if (sc != scit)
+				scit.write(encoder.encode(CharBuffer.wrap("LEFT " + name + "\n")));
 			}
 			String older = mapSockRoom.get(sc);
 			mapSockRoom.remove(sc);
@@ -227,8 +231,10 @@ public class ChatServer
 			if (mapRoom.get(older).size() == 0){
 			    mapRoom.remove(older);
 			}
+			sc.write(encoder.encode(CharBuffer.wrap("OK\n")));
 			error = false;
 		    } else if (message.indexOf("bye") == 1 && decmessage.length == 1) {
+			sc.write(encoder.encode(CharBuffer.wrap("BYE\n")));
 			if (mapSockRoom.containsKey(sc)) {
 			    Set<SocketChannel> s = mapRoom.get(mapSockRoom.get(sc));
 			    mapSockRoom.remove(sc);
